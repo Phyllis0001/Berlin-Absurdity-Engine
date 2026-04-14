@@ -122,8 +122,18 @@ export function AppProvider({ children }) {
   const [warning,     setWarning]     = useState(null)
   const [problems,    setProblems]    = useState([])
   const [selectedId,  setSelectedId]  = useState(null)   // problem whose AI solution is shown
+  const [bioAlert,    setBioAlert]    = useState(null)   // webcam anomaly alert
+  const [soundEnabled, setSoundEnabled] = useState(false) // TTS / audio toggle
   const warnTimer  = useRef(null)
   const spawnTimer = useRef(null)
+  const bioTimerRef = useRef(null)
+
+  // ── Bio Alert (webcam anomaly) ────────────────────────────────────────────
+  const triggerBioAlert = useCallback(() => {
+    clearTimeout(bioTimerRef.current)
+    setBioAlert({ ts: Date.now() })
+    bioTimerRef.current = setTimeout(() => setBioAlert(null), 6000)
+  }, [])
 
   // ── Warning ──────────────────────────────────────────────────────────────
   const triggerWarning = useCallback((msg, severity = 'INFO') => {
@@ -212,6 +222,8 @@ export function AppProvider({ children }) {
       setWeather, setSeason,
       problems, spawnProblem, removeProblem, selectProblem,
       selectedProblem, selectedId,
+      bioAlert, triggerBioAlert,
+      soundEnabled, setSoundEnabled,
     }}>
       {children}
     </AppCtx.Provider>

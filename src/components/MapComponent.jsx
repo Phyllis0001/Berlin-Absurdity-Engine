@@ -122,7 +122,7 @@ export default function MapComponent() {
   const pausedRef    = useRef(false)
   const hoveredId    = useRef(null)
 
-  const { warning, weather, problems } = useApp()
+  const { warning, weather, problems, bioAlert, soundEnabled, setSoundEnabled } = useApp()
 
   const [orbitActive, setOrbitActive] = useState(true)
   const [coords,      setCoords]      = useState({ lng: 13.405, lat: 52.520, zoom: 15, bearing: -30, pitch: 45 })
@@ -293,12 +293,59 @@ export default function MapComponent() {
 
   return (
     <div
-      className={`app-root${warning ? ' global-warning' : ''}`}
+      className={`app-root${warning ? ' global-warning' : ''}${bioAlert ? ' bio-alert-active' : ''}`}
       style={{ width:'100vw', height:'100vh', position:'relative', background: RADAR_GREY }}
     >
       <div ref={containerRef} style={{ width:'100%', height:'100%', filter: mapFilter, transition:'filter 1.4s ease' }} />
       <div className="digital-grid" />
       <div className="weather-tint" style={{ background: tintColor, transition:'background 1.4s ease' }} />
+
+      {/* ── Bio Alert: red flash overlay ── */}
+      {bioAlert && <div className="bio-alert-flash" />}
+
+      {/* ── Bio Alert: containment laser from webcam (bottom-right) to map center ── */}
+      {bioAlert && (
+        <svg className="containment-laser-svg" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="laser-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          {/* Core beam */}
+          <line
+            className="laser-beam"
+            x1="91%" y1="87%"
+            x2="50%" y2="50%"
+            filter="url(#laser-glow)"
+          />
+          {/* Bright center */}
+          <line
+            className="laser-beam laser-beam--core"
+            x1="91%" y1="87%"
+            x2="50%" y2="50%"
+          />
+          {/* Target reticle at map center */}
+          <circle className="laser-target" cx="50%" cy="50%" r="18" />
+          <circle className="laser-target laser-target--inner" cx="50%" cy="50%" r="6" />
+          <line className="laser-crosshair" x1="calc(50% - 28px)" y1="50%" x2="calc(50% - 10px)" y2="50%" />
+          <line className="laser-crosshair" x1="calc(50% + 10px)" y1="50%" x2="calc(50% + 28px)" y2="50%" />
+          <line className="laser-crosshair" x1="50%" y1="calc(50% - 28px)" x2="50%" y2="calc(50% - 10px)" />
+          <line className="laser-crosshair" x1="50%" y1="calc(50% + 10px)" x2="50%" y2="calc(50% + 28px)" />
+        </svg>
+      )}
+
+      {/* ── Bio Alert: message banner ── */}
+      {bioAlert && (
+        <div className="bio-alert-banner">
+          <span className="bio-alert-label">▶ SUBJECT 001: EMOTIONAL ANOMALY DETECTED</span>
+          <span className="bio-alert-sub">CONTAINMENT LASER ENGAGED // PROTOCOL BIO-7 ACTIVE</span>
+        </div>
+      )}
+
       <WeatherEffect />
       {mapReady && <MapMarkersEffect mapRef={mapRef} />}
 
@@ -360,6 +407,14 @@ export default function MapComponent() {
           mapRef.current.easeTo({ pitch:45, zoom:15, bearing:0, center:[13.405,52.520], duration:800 })
           bearingRef.current = 0
         }}>RESET CAM</button>
+        <div className="cam-controls-divider" />
+        <button
+          className={`cam-btn cam-btn--sound${soundEnabled ? ' cam-btn--active' : ''}`}
+          onClick={() => setSoundEnabled(s => !s)}
+          title={soundEnabled ? 'Disable AI audio narration' : 'Enable AI audio narration'}
+        >
+          {soundEnabled ? '◉ SND: ON' : '○ SND: OFF'}
+        </button>
       </div>
 
       <WebcamFeed />
