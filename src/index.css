@@ -2059,3 +2059,15 @@ html, body, #root {
   font-family: 'Courier New', monospace;
   line-height: 1.4;
 }
+
+/* Alert variant — lost / too-close states */
+.wcf-glitch-log--alert {
+  border-top-color: rgba(255,50,0,0.35);
+  background: rgba(20,5,0,0.75);
+}
+.wcf-glitch-log--alert .wcf-glitch-log-cursor {
+  color: rgba(255,80,0,0.80);
+}
+.wcf-glitch-log--alert .wcf-glitch-log-text {
+  color: rgba(255,120,0,0.92);
+}
