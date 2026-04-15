@@ -30,7 +30,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_BASE: /Berlin-Sensor-monitor/
+          VITE_BASE: /Berlin-Absurdity-Engine/
 
       - uses: actions/upload-pages-artifact@v3
         with:
