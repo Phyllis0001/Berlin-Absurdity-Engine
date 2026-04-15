@@ -763,9 +763,9 @@ html, body, #root {
   line-height: 0;
 }
 
-/* Night-vision filter on the canvas element ONLY — overlays keep true colours */
+/* Night-vision filter — desaturate → sepia → hue-shift → re-saturate for vivid phosphor green */
 .wcf-canvas--nv {
-  filter: brightness(1.28) contrast(1.70) saturate(0.12) sepia(0.88) hue-rotate(82deg);
+  filter: brightness(1.30) contrast(1.75) saturate(0) sepia(1) hue-rotate(80deg) saturate(2.2);
 }
 
 .wcf-canvas {
@@ -1928,4 +1928,134 @@ html, body, #root {
 @keyframes pmk-ring {
   0%   { transform: scale(0.4); opacity: 0.6; }
   100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* ─── WebcamFeed — Human Glitch additions ─────────────────────────────────── */
+
+/* Sound toggle button */
+.wcf-sound-btn {
+  background: rgba(0,255,65,0.06);
+  border: 1px solid rgba(0,255,65,0.22);
+  color: rgba(0,255,65,0.40);
+  font-family: inherit;
+  font-size: 0.52rem;
+  letter-spacing: 0.10em;
+  padding: 2px 5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.wcf-sound-btn:hover {
+  background: rgba(0,255,65,0.14);
+  color: rgba(0,255,65,0.75);
+  border-color: rgba(0,255,65,0.50);
+}
+.wcf-sound-btn--on {
+  background: rgba(0,255,65,0.14);
+  border-color: rgba(0,255,65,0.60);
+  color: rgba(0,255,65,0.95);
+  text-shadow: 0 0 6px rgba(0,255,65,0.55);
+}
+
+/* HUD bars overlay — sits at the bottom of the canvas */
+.wcf-hud-bars {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 7px 7px;
+  background: linear-gradient(to top, rgba(0,8,2,0.88) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.wcf-hud-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.wcf-hud-label {
+  width: 68px;
+  font-size: 0.41rem;
+  letter-spacing: 0.06em;
+  color: rgba(0,255,65,0.80);
+  font-family: 'Courier New', monospace;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.wcf-hud-track {
+  flex: 1;
+  height: 5px;
+  background: rgba(0,255,65,0.08);
+  border: 1px solid rgba(0,255,65,0.22);
+  overflow: hidden;
+}
+
+.wcf-hud-fill {
+  height: 100%;
+  transition: width 0.18s linear;
+  max-width: 100%;
+}
+
+.wcf-hud-fill--glitch {
+  background: linear-gradient(90deg, rgba(0,255,65,0.55), rgba(200,255,0,0.85));
+  box-shadow: 0 0 5px rgba(0,255,65,0.45);
+}
+
+.wcf-hud-fill--reality {
+  background: linear-gradient(90deg, rgba(0,180,255,0.50), rgba(0,255,65,0.75));
+  box-shadow: 0 0 5px rgba(0,180,255,0.35);
+}
+
+.wcf-hud-fill--critical {
+  background: linear-gradient(90deg, rgba(255,50,0,0.75), rgba(255,210,0,0.90));
+  box-shadow: 0 0 6px rgba(255,50,0,0.55);
+  animation: wcf-critical-flash 0.45s step-end infinite;
+}
+
+@keyframes wcf-critical-flash {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+.wcf-hud-pct {
+  width: 26px;
+  text-align: right;
+  font-size: 0.41rem;
+  color: rgba(0,255,65,0.65);
+  font-family: 'Courier New', monospace;
+  flex-shrink: 0;
+}
+
+/* Glitch log bar — single scrolling message below the video */
+.wcf-glitch-log {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-top: 1px solid rgba(0,255,65,0.18);
+  background: rgba(0,10,4,0.72);
+  min-height: 24px;
+}
+
+.wcf-glitch-log-cursor {
+  color: rgba(0,255,65,0.65);
+  font-size: 0.52rem;
+  flex-shrink: 0;
+  animation: wcf-cursor-blink 1s step-end infinite;
+}
+
+@keyframes wcf-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.wcf-glitch-log-text {
+  color: rgba(0,255,65,0.92);
+  font-size: 0.52rem;
+  letter-spacing: 0.04em;
+  font-family: 'Courier New', monospace;
+  line-height: 1.4;
 }
