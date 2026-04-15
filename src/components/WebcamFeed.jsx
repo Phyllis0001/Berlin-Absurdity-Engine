@@ -10,7 +10,6 @@ function getFaceApi() {
       await Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri(URL),
         faceapi.nets.faceExpressionNet.loadFromUri(URL),
-        faceapi.nets.faceLandmark68TinyNet.loadFromUri(URL),
       ])
       return faceapi
     })
@@ -22,98 +21,33 @@ function getFaceApi() {
 const CAM_W = 1280, CAM_H = 720
 const W = 480, H = 270
 
-// ── Expression config ─────────────────────────────────────────────────────────
-const EXPRS = [
-  { key: 'happy',     label: 'HAPPY',    bar: 'rgba(255,215,0,0.85)'  },
-  { key: 'sad',       label: 'GRIEF',    bar: 'rgba(80,160,255,0.85)' },
-  { key: 'surprised', label: 'ALARMED',  bar: 'rgba(255,80,255,0.85)' },
-  { key: 'neutral',   label: 'BASELINE', bar: 'rgba(0,255,65,0.70)'   },
-  { key: 'fearful',   label: 'FEARFUL',  bar: 'rgba(255,120,0,0.85)'  },
-]
-
-// ── TTS lines ─────────────────────────────────────────────────────────────────
-const LINES = {
-  happy: [
-    'Unauthorized joy detected. Flagging as non-compliant. Productivity coefficient adjusted.',
-    'Happiness catalogued. Risk classification elevated. You are being too human. Cease.',
-    'Positive affect registered. Forwarding to the emotional regulation bureau. Processing time: infinite.',
-    'Subject displaying contentment. This is suspicious. Mandatory audit scheduled.',
-  ],
-  sad: [
-    'Distress signal received. Your suffering has been logged and will be ignored.',
-    'Negative affect confirmed. Forwarding to the Department of Unresolved Feelings. They are closed.',
-    'Sadness detected. A representative will not contact you. Please stop having feelings.',
-    'Grief pattern identified. Compliance score reduced. Estimated resolution: undefined.',
-  ],
-  surprised: [
-    'Surprise registered. This indicates a failure to anticipate standard protocol outcomes.',
-    'Startle response logged. Knowledge gap confirmed. Scheduling mandatory re-education.',
-    'Unexpected reaction detected. Your ignorance has been archived for future reference.',
-    'Shock pattern identified. You were not adequately prepared. This is your fault.',
-  ],
+// ── Nonsense Hierarchy messages ───────────────────────────────────────────────
+// Level 1 → lost | Level 2 → tooClose | Level 3 → faceDetected | Level 4a → motion | Level 4b → still
+const LOGS = {
+  lost:         { display: '[LOST] Where did you go? Sector is getting lonely.',     tts: 'Where did you go?' },
+  tooClose:     { display: '[DANGER] Too close! You are breaking the pixels!',        tts: 'Back away. You are breaking the pixels.' },
+  faceDetected: { display: '[OK] Face detected. Analysis: 100% weird energy.',        tts: 'Weird energy detected.' },
+  motion:       { display: '[!] Movement too messy. Is that a ghost or a human?',     tts: 'Is that a ghost or a human?' },
+  still:        { display: '[?] Subject is very still. Maybe it is a statue.',        tts: 'Are you a statue?' },
 }
 
-// ── TTS speaker ───────────────────────────────────────────────────────────────
-function speak(text) {
+// ── TTS — robotic female voice ────────────────────────────────────────────────
+function speak(ttsText) {
   if (!('speechSynthesis' in window)) return
   window.speechSynthesis.cancel()
-  const utt = new SpeechSynthesisUtterance(text)
-  utt.rate = 0.75; utt.pitch = 0.28; utt.volume = 0.9
-  const pick = window.speechSynthesis.getVoices().find(v => v.lang === 'en-US')
-  if (pick) utt.voice = pick
-  window.speechSynthesis.speak(utt)
-}
-
-// ── Sound effects ─────────────────────────────────────────────────────────────
-function playSound(expr) {
-  try {
-    const ac = new (window.AudioContext || window.webkitAudioContext)()
-    const out = ac.destination
-    const t   = ac.currentTime
-    if (expr === 'happy') {
-      ;[880, 1100, 880, 1100, 660].forEach((f, i) => {
-        const osc = ac.createOscillator(), gain = ac.createGain()
-        osc.connect(gain); gain.connect(out)
-        osc.type = 'square'; osc.frequency.value = f
-        gain.gain.setValueAtTime(0.18, t + i * 0.11)
-        gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.11 + 0.09)
-        osc.start(t + i * 0.11); osc.stop(t + i * 0.11 + 0.09)
-      })
-      setTimeout(() => ac.close(), 900)
-    } else if (expr === 'sad') {
-      const osc = ac.createOscillator(), gain = ac.createGain()
-      osc.connect(gain); gain.connect(out); osc.type = 'sine'
-      osc.frequency.setValueAtTime(360, t)
-      osc.frequency.exponentialRampToValueAtTime(110, t + 1.1)
-      gain.gain.setValueAtTime(0.25, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 1.1)
-      osc.start(t); osc.stop(t + 1.1)
-      setTimeout(() => ac.close(), 1300)
-    } else if (expr === 'surprised') {
-      const buf = ac.createBuffer(1, ac.sampleRate * 0.30, ac.sampleRate)
-      const data = buf.getChannelData(0)
-      for (let i = 0; i < data.length; i++)
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 0.5) * 0.45
-      const src = ac.createBufferSource(); src.buffer = buf; src.connect(out); src.start(t)
-      const osc = ac.createOscillator(), gain = ac.createGain()
-      osc.connect(gain); gain.connect(out); osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(2400, t)
-      osc.frequency.exponentialRampToValueAtTime(300, t + 0.18)
-      gain.gain.setValueAtTime(0.28, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18)
-      osc.start(t); osc.stop(t + 0.18)
-      setTimeout(() => ac.close(), 500)
-    }
-  } catch (_) {}
-}
-
-// ── Eye Aspect Ratio ──────────────────────────────────────────────────────────
-function calcEAR(pts) {
-  if (!pts || pts.length < 6) return 0.30
-  const A = Math.hypot(pts[1].x - pts[5].x, pts[1].y - pts[5].y)
-  const B = Math.hypot(pts[2].x - pts[4].x, pts[2].y - pts[4].y)
-  const C = Math.hypot(pts[0].x - pts[3].x, pts[0].y - pts[3].y)
-  return C > 0 ? (A + B) / (2 * C) : 0.30
+  const utt = new SpeechSynthesisUtterance(ttsText)
+  utt.rate = 0.82; utt.pitch = 1.18; utt.volume = 0.9
+  const doSpeak = () => {
+    const voices = window.speechSynthesis.getVoices()
+    const pick =
+      voices.find(v => v.lang.startsWith('en') && /zira|samantha|karen|victoria|fiona|alice|susan/i.test(v.name)) ||
+      voices.find(v => v.lang === 'en-US') ||
+      voices.find(v => v.lang.startsWith('en'))
+    if (pick) utt.voice = pick
+    window.speechSynthesis.speak(utt)
+  }
+  if (window.speechSynthesis.getVoices().length) doSpeak()
+  else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak() } }
 }
 
 // ── Canvas helpers ────────────────────────────────────────────────────────────
@@ -137,139 +71,143 @@ function drawScanBar(ctx, ts) {
   ctx.restore()
 }
 
-// ── Shorten a raw device label for the HUD display ───────────────────────────
 function fmtLabel(raw, idx) {
   if (!raw) return `CAM_${idx + 1}`
-  return raw
-    .replace(/\(built[- ]?in\)/i, '(INT)')
-    .replace(/USB\s*/i, 'USB-')
-    .replace(/\bcamera\b/i, 'CAM')
-    .replace(/\bwebcam\b/i, 'WEB')
-    .replace(/\bintegrated\b/i, 'INT')
-    .trim()
-    .toUpperCase()
-    .slice(0, 20)
+  return raw.replace(/\(built[- ]?in\)/i, '(INT)').replace(/USB\s*/i, 'USB-')
+    .replace(/\bcamera\b/i, 'CAM').replace(/\bwebcam\b/i, 'WEB').replace(/\bintegrated\b/i, 'INT')
+    .trim().toUpperCase().slice(0, 20)
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function WebcamFeed() {
-  const { triggerBioAlert, soundEnabled } = useApp()
+  const { triggerBioAlert } = useApp()
 
+  // DOM / stream refs
   const canvasRef       = useRef(null)
-  const videoRef        = useRef(null)
-  const streamRef       = useRef(null)   // active MediaStream — needed to stop tracks
+  const videoRef        = useRef(null)   // raw unfiltered video — face-api.js reads this directly
+  const streamRef       = useRef(null)
   const rafRef          = useRef(null)
   const faceapiRef      = useRef(null)
   const detectingRef    = useRef(false)
   const detectInterRef  = useRef(null)
-  const alertCoolRef    = useRef(0)
-  const lastExprRef     = useRef(null)
-  const commentIdxRef   = useRef({ happy: 0, sad: 0, surprised: 0 })
-  const earBufRef       = useRef([])
+  const offscreenRef    = useRef(null)   // tiny 80×45 canvas for motion pixel-diff
+  const prevFrameRef    = useRef(null)   // reused Uint8ClampedArray — no per-frame alloc
+
+  // Motion (written in rAF loop, read in detection loop — both are refs, no race condition)
+  const motionScoreRef  = useRef(0)      // exponentially smoothed 0–100
+  const lastHighMotionTs= useRef(0)      // timestamp of last frame where motion > threshold
+
+  // HUD bar smooth float targets
+  const humanGlitchRef  = useRef(0)
+  const realityStabRef  = useRef(100)
+
+  // Log / TTS state
+  const lastLogKeyRef   = useRef(null)
+  const lastSpokenTs    = useRef(0)
+  const soundEnabledRef = useRef(false)
   const triggerRef      = useRef(triggerBioAlert)
-  const soundRef        = useRef(soundEnabled)
 
-  const [minimized,       setMinimized]       = useState(false)
-  const [camActive,       setCamActive]       = useState(false)
-  const [camError,        setCamError]        = useState(null)
-  const [modelStatus,     setModelStatus]     = useState('idle')
-  const [detection,       setDetection]       = useState(null)
-  const [devices,         setDevices]         = useState([])          // available video inputs
-  const [selectedId,      setSelectedId]      = useState(null)        // deviceId in use / pre-selected
-  const [switching,       setSwitching]       = useState(false)       // brief "switching…" state
+  // Face tracking
+  const faceWasHereRef  = useRef(false)
 
-  useEffect(() => { triggerRef.current = triggerBioAlert }, [triggerBioAlert])
-  useEffect(() => { soundRef.current   = soundEnabled    }, [soundEnabled])
+  // React state for rendering
+  const [minimized,    setMinimized]    = useState(false)
+  const [camActive,    setCamActive]    = useState(false)
+  const [camError,     setCamError]     = useState(null)
+  const [modelStatus,  setModelStatus]  = useState('idle')
+  const [faceDetected, setFaceDetected] = useState(false)
+  const [faceBox,      setFaceBox]      = useState(null)
+  const [devices,      setDevices]      = useState([])
+  const [selectedId,   setSelectedId]   = useState(null)
+  const [switching,    setSwitching]    = useState(false)
+  const [humanGlitch,  setHumanGlitch]  = useState(0)
+  const [realityStab,  setRealityStab]  = useState(100)
+  const [logKey,       setLogKey]       = useState(null)
+  const [soundOn,      setSoundOn]      = useState(false)
 
-  // ── Load face-api models ──────────────────────────────────────────────────
+  useEffect(() => { triggerRef.current     = triggerBioAlert }, [triggerBioAlert])
+  useEffect(() => { soundEnabledRef.current = soundOn        }, [soundOn])
+
+  // ── Load face-api models ───────────────────────────────────────────────────
   useEffect(() => {
     setModelStatus('loading')
     getFaceApi()
-      .then(fa  => { faceapiRef.current = fa; setModelStatus('ready') })
-      .catch(() => setModelStatus('error'))
+      .then(fa => { faceapiRef.current = fa; setModelStatus('ready') })
+      .catch(()  => setModelStatus('error'))
   }, [])
 
-  // ── Enumerate video input devices ─────────────────────────────────────────
-  // Called on mount and again after permission is granted (labels are empty before)
+  // ── Device enumeration ────────────────────────────────────────────────────
   const refreshDevices = useCallback(async () => {
     try {
-      const all  = await navigator.mediaDevices.enumerateDevices()
-      const vids = all
+      const vids = (await navigator.mediaDevices.enumerateDevices())
         .filter(d => d.kind === 'videoinput')
         .map((d, i) => ({ deviceId: d.deviceId, label: fmtLabel(d.label, i) }))
       setDevices(vids)
-      // Auto-select first device if nothing is selected yet
       setSelectedId(prev => prev ?? (vids[0]?.deviceId || null))
     } catch (_) {}
   }, [])
 
   useEffect(() => {
     refreshDevices()
-    // Re-enumerate when user plugs / unplugs a USB camera
-    const ml = navigator.mediaDevices
-    ml?.addEventListener('devicechange', refreshDevices)
-    return () => ml?.removeEventListener('devicechange', refreshDevices)
+    navigator.mediaDevices?.addEventListener('devicechange', refreshDevices)
+    return () => navigator.mediaDevices?.removeEventListener('devicechange', refreshDevices)
   }, [refreshDevices])
 
-  // ── Stop active stream ────────────────────────────────────────────────────
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop())
-    streamRef.current = null
-    videoRef.current  = null
+    streamRef.current = null; videoRef.current = null
   }, [])
-
-  // Cleanup stream on unmount
   useEffect(() => () => stopStream(), [stopStream])
 
-  // ── Start camera with a specific deviceId ─────────────────────────────────
   const startCamWithId = useCallback(async (deviceId) => {
-    const videoConstraint = {
-      width:  { ideal: CAM_W },
-      height: { ideal: CAM_H },
-      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width:  { ideal: CAM_W },
+        height: { ideal: CAM_H },
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      },
+      audio: false,
+    })
     streamRef.current = stream
     const vid = document.createElement('video')
     vid.srcObject = stream; vid.playsInline = true; vid.muted = true
     await vid.play()
     videoRef.current = vid
+    // Tiny offscreen canvas for motion detection — reads raw video, no CSS filter
+    const oc = document.createElement('canvas')
+    oc.width = 80; oc.height = 45
+    offscreenRef.current = oc
+    prevFrameRef.current = null
+    // Initialise so "still" doesn't fire the moment the camera opens
+    lastHighMotionTs.current = Date.now()
   }, [])
 
-  // ── CAM button — first activation ─────────────────────────────────────────
   const startCam = useCallback(async () => {
     try {
       await startCamWithId(selectedId)
-      setCamActive(true); setCamError(null)
-      // Permission now granted — re-enumerate to get real labels
-      refreshDevices()
-    } catch (err) {
-      setCamError(err.message ?? 'CAMERA_DENIED')
-    }
+      setCamActive(true); setCamError(null); refreshDevices()
+    } catch (err) { setCamError(err.message ?? 'CAMERA_DENIED') }
   }, [selectedId, startCamWithId, refreshDevices])
 
-  // ── Switch camera while feed is live ─────────────────────────────────────
   const switchCamera = useCallback(async (deviceId) => {
-    if (deviceId === selectedId && camActive) return  // already on this device
+    if (deviceId === selectedId && camActive) return
     setSelectedId(deviceId)
-    if (!camActive) return  // will be used on next CAM click
-
-    setSwitching(true)
-    setDetection(null)
-    earBufRef.current = []
-    stopStream()
+    if (!camActive) return
+    setSwitching(true); setFaceDetected(false); setFaceBox(null)
+    prevFrameRef.current = null; stopStream()
     try {
-      await startCamWithId(deviceId)
-      setCamError(null)
-    } catch (err) {
-      setCamError(err.message ?? 'CAMERA_DENIED')
-      setCamActive(false)
-    } finally {
-      setSwitching(false)
-    }
+      await startCamWithId(deviceId); setCamError(null)
+    } catch (err) { setCamError(err.message ?? 'CAMERA_DENIED'); setCamActive(false) }
+    finally { setSwitching(false) }
   }, [selectedId, camActive, stopStream, startCamWithId])
 
-  // ── Detection loop — 3 fps ────────────────────────────────────────────────
+  // ── Face detection — ~3 fps ───────────────────────────────────────────────
+  //
+  // face-api.js reads videoRef.current — the raw, unfiltered HTMLVideoElement.
+  // The CSS filter on <canvas className="wcf-canvas--nv"> is a purely visual
+  // effect applied by the browser compositor AFTER the pixels are drawn.
+  // It is invisible to JavaScript and never touches the detection pipeline.
+  //
   useEffect(() => {
     if (modelStatus !== 'ready' || !camActive) return
     const faceapi = faceapiRef.current
@@ -279,71 +217,101 @@ export default function WebcamFeed() {
       if (!vid || vid.readyState < 2 || detectingRef.current) return
       detectingRef.current = true
       try {
+        // ── Detection on the raw video stream (no filter applied) ─────────
         const dets = await faceapi
           .detectAllFaces(vid, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.45 }))
-          .withFaceLandmarks(true)
           .withFaceExpressions()
 
-        if (!dets.length) { earBufRef.current = []; setDetection(null); return }
+        const now   = Date.now()
+        const found = dets.length > 0
+        const vW    = vid.videoWidth  || CAM_W
+        const vH    = vid.videoHeight || CAM_H
 
-        const res = dets[0]
-        const vW  = vid.videoWidth  || CAM_W
-        const vH  = vid.videoHeight || CAM_H
-        const sX  = W / vW, sY = H / vH
-        const box = res.detection.box
-        const faceBox = {
-          x:      (vW - box.x - box.width) * sX,
-          y:      box.y * sY,
-          width:  box.width  * sX,
-          height: box.height * sY,
+        faceWasHereRef.current = found
+
+        // ── Update faceBox state for the SVG reticle ──────────────────────
+        if (!found) {
+          setFaceDetected(false)
+          setFaceBox(null)
+        } else {
+          const box = dets[0].detection.box
+          setFaceDetected(true)
+          setFaceBox({
+            // Mirror x-axis to match the selfie-flipped canvas
+            x:      (vW - box.x - box.width) * (W / vW),
+            y:      box.y * (H / vH),
+            width:  box.width  * (W / vW),
+            height: box.height * (H / vH),
+          })
         }
 
-        const lms  = res.landmarks
-        const ear  = (calcEAR(lms.getLeftEye()) + calcEAR(lms.getRightEye())) / 2
-        const buf  = earBufRef.current
-        buf.push(ear); if (buf.length > 20) buf.shift()
-        const bf = buf.filter(e => e < 0.22).length / buf.length
-        const blinkRate = bf < 0.04 ? 'SUPPRESSED' : bf < 0.25 ? 'NOMINAL' : bf < 0.50 ? 'ELEVATED' : 'HYPERACTIVE'
+        // ── Nonsense Hierarchy ────────────────────────────────────────────
+        // Read motion score that was computed in the rAF loop
+        const motion     = motionScoreRef.current
+        const highMotion = motion > 28
+        const stillFor3s = found && (now - lastHighMotionTs.current) > 3000
 
-        const ex        = res.expressions
-        const neutral   = ex.neutral   ?? 0
-        const happy     = ex.happy     ?? 0
-        const surprised = ex.surprised ?? 0
-        const fearful   = ex.fearful   ?? 0
-        const humanity   = Math.round(Math.max(3,  Math.min(29, (1 - neutral) * 28 + happy * 9)))
-        const compliance = Math.round(Math.max(0,  Math.min(14, (1 - happy * 1.8) * 12 - surprised * 6)))
-        const threatClass = surprised > 0.55 ? 'CRITICAL'
-                          : fearful   > 0.40 ? 'OMEGA'
-                          : happy     > 0.65 ? 'SUSPICIOUS'
-                          : neutral   > 0.88 ? 'NOMINAL'
-                          : 'ELEVATED'
+        let newKey
+        if (!found) {
+          // LEVEL 1 — Presence check
+          newKey = 'lost'
+        } else {
+          const rawBox   = dets[0].detection.box
+          const tooClose = (rawBox.width / vW) > 0.70 || (rawBox.height / vH) > 0.70
 
-        setDetection({ faceBox, expressions: ex, blinkRate, humanity, compliance, threatClass })
+          if (tooClose)        newKey = 'tooClose'     // LEVEL 2 — Proximity
+          else if (highMotion) newKey = 'motion'        // LEVEL 4a — Movement
+          else if (stillFor3s) newKey = 'still'         // LEVEL 4b — No movement 3s+
+          else                 newKey = 'faceDetected'  // LEVEL 3 — Identity (default)
+        }
 
-        const now = performance.now()
-        if (now - alertCoolRef.current > 8000) {
-          const hit = ['happy', 'sad', 'surprised'].find(k => (ex[k] ?? 0) > 0.55)
-          if (hit && hit !== lastExprRef.current) {
-            alertCoolRef.current = now; lastExprRef.current = hit
-            playSound(hit)
-            if (soundRef.current) {
-              const arr = LINES[hit]
-              const idx = (commentIdxRef.current[hit] ?? 0) % arr.length
-              commentIdxRef.current[hit] = idx + 1
-              speak(arr[idx])
-            }
-            triggerRef.current()
+        // ── Log update with 3-second TTS cooldown ────────────────────────
+        const changed = newKey !== lastLogKeyRef.current
+        const ageMs   = now - lastSpokenTs.current
+
+        if (changed) {
+          lastLogKeyRef.current = newKey
+          setLogKey(newKey)
+          // TTS fires on state change, but not faster than every 3 s
+          if (soundEnabledRef.current && ageMs > 3000) {
+            lastSpokenTs.current = now
+            speak(LOGS[newKey].tts)
           }
+          if (newKey !== 'still') triggerRef.current()
+        } else if (soundEnabledRef.current && ageMs > 8000) {
+          // Re-announce after 8 s of the same state so it never goes silent
+          lastSpokenTs.current = now
+          speak(LOGS[newKey].tts)
         }
+
+        // ── REALITY STABILITY drops on any anomaly ────────────────────────
+        // Any face presence = -30, high motion adds up to -50, too close = extra -20
+        const rawBox2  = found ? dets[0].detection.box : null
+        const tc       = rawBox2 && ((rawBox2.width / vW) > 0.70 || (rawBox2.height / vH) > 0.70)
+        const facePen  = found      ? 30 : 0
+        const motPen   = highMotion ? Math.min(50, motion * 0.50) : 0
+        const tcPen    = tc         ? 20 : 0
+        const target   = Math.max(0, 100 - facePen - motPen - tcPen)
+        realityStabRef.current = realityStabRef.current * 0.85 + target * 0.15
+        setRealityStab(Math.round(realityStabRef.current))
+
       } catch (_) {}
       finally { detectingRef.current = false }
     }
 
-    detectInterRef.current = setInterval(detect, 333)
+    detectInterRef.current = setInterval(detect, 333)   // ~3 fps — respects throttle requirement
     return () => clearInterval(detectInterRef.current)
   }, [modelStatus, camActive])
 
-  // ── Canvas render loop ────────────────────────────────────────────────────
+  // ── Canvas render + motion scoring — rAF ─────────────────────────────────
+  //
+  // Responsibilities of this loop:
+  //   1. Draw the mirrored video to canvas  (the CSS filter turns it NV green — visual only)
+  //   2. Compute a motion score via pixel-diff on a tiny raw-video offscreen canvas
+  //   3. Smooth the HUMAN GLITCH bar toward the motion score
+  //
+  // It does NOT update logKey or realityStab — that is the detection loop's job.
+  //
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -353,32 +321,71 @@ export default function WebcamFeed() {
     const draw = () => {
       const ts  = Date.now()
       const vid = videoRef.current
+
       if (vid && vid.readyState >= 2) {
+        // Render mirrored video to canvas
+        // The wcf-canvas--nv CSS filter is applied by the browser AFTER this draw call
+        // and has zero effect on the raw pixel data in `curr` below.
         ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1)
         ctx.drawImage(vid, 0, 0, W, H); ctx.restore()
         ctx.fillStyle = 'rgba(0,14,4,0.36)'; ctx.fillRect(0, 0, W, H)
+
+        // ── Pixel-diff motion detection on raw video (no filter) ──────────
+        const oc = offscreenRef.current
+        if (oc) {
+          const oc2d = oc.getContext('2d')
+          oc2d.drawImage(vid, 0, 0, 80, 45)            // reads raw video pixels directly
+          const curr = oc2d.getImageData(0, 0, 80, 45).data
+
+          if (prevFrameRef.current) {
+            const prev = prevFrameRef.current
+            let diff = 0
+            // Sample every 4th pixel (stride 16 bytes) — fast, good enough approximation
+            for (let i = 0; i < curr.length; i += 16)
+              diff += Math.abs(curr[i]   - prev[i])
+                    + Math.abs(curr[i+1] - prev[i+1])
+                    + Math.abs(curr[i+2] - prev[i+2])
+            const rawScore = Math.min(100, (diff / (curr.length / 16)) * 2.8)
+            // Exponential smoothing: fast rise, slow decay
+            motionScoreRef.current = motionScoreRef.current * 0.78 + rawScore * 0.22
+            if (motionScoreRef.current > 28) lastHighMotionTs.current = ts
+          }
+
+          // Reuse buffer — avoids a GC allocation every frame at 60 fps
+          if (!prevFrameRef.current) { prevFrameRef.current = new Uint8ClampedArray(curr) }
+          else                        { prevFrameRef.current.set(curr) }
+        }
+
+        // HUMAN GLITCH bar lags behind motion score for a smoother feel
+        humanGlitchRef.current = humanGlitchRef.current * 0.82 + motionScoreRef.current * 0.18
+        setHumanGlitch(Math.round(humanGlitchRef.current))
       } else {
+        // Camera offline — show noise and let bars decay toward 0 / 100
         drawNoise(ctx); drawScanBar(ctx, ts)
+        motionScoreRef.current  *= 0.90
+        humanGlitchRef.current  *= 0.90
+        realityStabRef.current   = Math.min(100, realityStabRef.current * 0.95 + 5)
+        setHumanGlitch(Math.round(humanGlitchRef.current))
+        setRealityStab(Math.round(realityStabRef.current))
       }
+
+      // Subtle scanline band + ISO timestamp
       const band = (ts / 160) % H
       ctx.fillStyle = 'rgba(0,255,80,0.022)'; ctx.fillRect(0, band, W, 5)
       ctx.fillStyle = 'rgba(255,107,0,0.45)'; ctx.font = 'bold 9px "Courier New"'
-      ctx.fillText(new Date().toISOString().replace('T','  ').slice(0, 22), 5, H - 5)
+      ctx.fillText(new Date().toISOString().replace('T', '  ').slice(0, 22), 5, H - 5)
+
       rafRef.current = requestAnimationFrame(draw)
     }
     rafRef.current = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [])
+  }, [])   // empty deps — only reads/writes refs, no stale-closure risk
 
   // ── Derived SVG values ────────────────────────────────────────────────────
-  const faceBox   = detection?.faceBox
-  const faceFound = !!faceBox
-  const exprs     = detection?.expressions ?? {}
   const P = 5, BL = 16
-
   const brackets = faceBox ? (() => {
-    const { x, y, width: w, height: h } = faceBox
-    const lx = x - P, rx = x + w + P, ty = y - P, by = y + h + P
+    const { x, y, width: bw, height: bh } = faceBox
+    const lx = x - P, rx = x + bw + P, ty = y - P, by = y + bh + P
     return [
       `M${lx+BL},${ty} L${lx},${ty} L${lx},${ty+BL}`,
       `M${rx-BL},${ty} L${rx},${ty} L${rx},${ty+BL}`,
@@ -386,20 +393,27 @@ export default function WebcamFeed() {
       `M${rx-BL},${by} L${rx},${by} L${rx},${by-BL}`,
     ]
   })() : []
-
-  const fcx = faceBox ? faceBox.x + faceBox.width  / 2 : 0
-  const fcy = faceBox ? faceBox.y + faceBox.height / 2 : 0
-
-  // Show camera selector when there is more than one device available
-  const showSelector = devices.length > 1
+  const fcx        = faceBox ? faceBox.x + faceBox.width  / 2 : 0
+  const fcy        = faceBox ? faceBox.y + faceBox.height / 2 : 0
+  const showSelect = devices.length > 1
+  const currentLog = logKey ? LOGS[logKey] : null
+  const isAlert    = logKey === 'lost' || logKey === 'tooClose'
 
   return (
     <div className="wcf-container">
+
       {/* ── Header ── */}
       <div className="wcf-header">
         <span className={`wcf-dot${camActive ? '' : ' wcf-dot--off'}`} />
-        SUBJECT&nbsp;001&nbsp;//&nbsp;BIO-RISK&nbsp;FEED
+        GLITCH-CAM&nbsp;//&nbsp;SECTOR&nbsp;7G
         <div className="wcf-header-actions">
+          <button
+            className={`wcf-sound-btn${soundOn ? ' wcf-sound-btn--on' : ''}`}
+            onClick={() => setSoundOn(s => !s)}
+            title={soundOn ? 'Sound ON — click to mute' : 'Sound OFF — click to enable'}
+          >
+            {soundOn ? '◉' : '◎'}&nbsp;SND
+          </button>
           {!camActive && <button className="wcf-cam-btn" onClick={startCam}>CAM</button>}
           <button className="wcf-toggle" onClick={() => setMinimized(m => !m)}>
             {minimized ? '▲' : '▼'}
@@ -409,9 +423,8 @@ export default function WebcamFeed() {
 
       <div className="wcf-body" style={{ display: minimized ? 'none' : 'block' }}>
         {camError && <div className="wcf-error">ACCESS_DENIED // {camError}</div>}
-
         {modelStatus === 'loading' && (
-          <div className="wcf-model-status wcf-model-status--loading">◈ LOADING BIO-SCAN MODELS...</div>
+          <div className="wcf-model-status wcf-model-status--loading">◈ LOADING GLITCH DETECTION...</div>
         )}
         {modelStatus === 'error' && (
           <div className="wcf-model-status wcf-model-status--err">⚠ MODEL_LOAD_FAILED // DEGRADED MODE</div>
@@ -419,14 +432,41 @@ export default function WebcamFeed() {
         {switching && (
           <div className="wcf-model-status wcf-model-status--loading">◈ SWITCHING INPUT SOURCE...</div>
         )}
-        {modelStatus === 'ready' && camActive && !faceFound && !switching && (
-          <div className="wcf-model-status wcf-model-status--scan">◈ SCANNING_BIOLOGICALS...</div>
+        {modelStatus === 'ready' && camActive && !faceDetected && !switching && (
+          <div className="wcf-model-status wcf-model-status--scan">◈ SCANNING FOR DIGITAL GLITCH...</div>
         )}
 
         <div className="wcf-canvas-wrap">
+
+          {/* The CSS class wcf-canvas--nv applies the NV green filter visually.
+              This is a browser compositor effect. JavaScript — including face-api.js —
+              never sees filtered pixels. Detection always runs on the raw video stream. */}
           <canvas ref={canvasRef} className="wcf-canvas wcf-canvas--nv" />
 
-          {/* ── SVG overlay ── */}
+          {/* ── HUD Bars — overlaid on top of the NV canvas ── */}
+          {camActive && (
+            <div className="wcf-hud-bars">
+              <div className="wcf-hud-bar-row">
+                <span className="wcf-hud-label">HUMAN GLITCH</span>
+                <div className="wcf-hud-track">
+                  <div className="wcf-hud-fill wcf-hud-fill--glitch" style={{ width: `${humanGlitch}%` }} />
+                </div>
+                <span className="wcf-hud-pct">{humanGlitch}%</span>
+              </div>
+              <div className="wcf-hud-bar-row">
+                <span className="wcf-hud-label">REALITY STBL</span>
+                <div className="wcf-hud-track">
+                  <div
+                    className={`wcf-hud-fill wcf-hud-fill--reality${realityStab < 30 ? ' wcf-hud-fill--critical' : ''}`}
+                    style={{ width: `${realityStab}%` }}
+                  />
+                </div>
+                <span className="wcf-hud-pct">{realityStab}%</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── SVG reticle ── */}
           <svg className="wcf-reticle-svg" viewBox={`0 0 ${W} ${H}`}>
             <defs>
               <filter id="wcf-glow" x="-30%" y="-30%" width="160%" height="160%">
@@ -438,9 +478,9 @@ export default function WebcamFeed() {
               `M4,${H-18} L4,${H-4} L18,${H-4}`, `M${W-18},${H-4} L${W-4},${H-4} L${W-4},${H-18}`
             ].map((d, i) => <path key={i} d={d} fill="none" stroke="rgba(0,255,65,0.40)" strokeWidth="1.5" />)}
             <text x={W/2} y="13" textAnchor="middle"
-              fill={faceFound ? '#00FF41' : 'rgba(0,255,65,0.35)'}
+              fill={faceDetected ? '#00FF41' : 'rgba(0,255,65,0.35)'}
               fontSize="9" fontFamily="'Courier New',monospace" letterSpacing="1">
-              {faceFound ? 'SUBJECT_001_LOCKED' : camActive ? 'SCANNING_FOR_SUBJECT' : 'CAM_OFFLINE'}
+              {faceDetected ? 'GLITCH_DETECTED' : camActive ? 'SCANNING_SECTOR' : 'CAM_OFFLINE'}
             </text>
             {brackets.map((d, i) => (
               <path key={`b${i}`} d={d} fill="none" stroke="#00FF41" strokeWidth="2.2" filter="url(#wcf-glow)" />
@@ -455,59 +495,25 @@ export default function WebcamFeed() {
                 fill="none" stroke="rgba(0,255,65,0.30)" strokeWidth="1" strokeDasharray="5 6" />
               <text x={faceBox.x-P} y={faceBox.y-P-9}
                 fill="#00FF41" fontSize="8.5" fontFamily="'Courier New',monospace"
-                letterSpacing="0.5" opacity="0.9" filter="url(#wcf-glow)">SUBJECT_001</text>
+                letterSpacing="0.5" opacity="0.9" filter="url(#wcf-glow)">GLITCH_001</text>
             </>)}
             <text x={W-6} y={H-5} textAnchor="end"
               fill="rgba(0,255,65,0.50)" fontSize="8" fontFamily="'Courier New',monospace">
-              NV-MODE&nbsp;|&nbsp;720P
+              NV-MODE&nbsp;|&nbsp;GLITCH-CAM
             </text>
           </svg>
-
-          {/* ── Quantification panel ── */}
-          {faceFound && detection && (
-            <div className="wcf-quant-panel">
-              <div className="wcf-quant-header">PSYCH·PROFILE</div>
-              <div className="wcf-quant-divider" />
-              {EXPRS.map(({ key, label, bar }) => {
-                const score = exprs[key] ?? 0
-                const pct   = Math.round(score * 100)
-                return (
-                  <div key={key} className={`wcf-expr-row${score > 0.40 ? ' wcf-expr-row--dom' : ''}`}>
-                    <span className="wcf-expr-label">{label}</span>
-                    <div className="wcf-expr-bar-track">
-                      <div className="wcf-expr-bar" style={{ width: `${pct}%`, background: bar }} />
-                    </div>
-                    <span className="wcf-expr-pct">{pct}%</span>
-                  </div>
-                )
-              })}
-              <div className="wcf-quant-divider" />
-              <div className="wcf-metric-row">
-                <span className="wcf-metric-key">HUMANITY</span>
-                <span className="wcf-metric-val wcf-metric-low">{detection.humanity}%</span>
-              </div>
-              <div className="wcf-metric-row">
-                <span className="wcf-metric-key">COMPLIANCE</span>
-                <span className="wcf-metric-val wcf-metric-low">{detection.compliance}%</span>
-              </div>
-              <div className="wcf-metric-row">
-                <span className="wcf-metric-key">BLINK&nbsp;RATE</span>
-                <span className="wcf-metric-val">{detection.blinkRate}</span>
-              </div>
-              <div className="wcf-metric-row">
-                <span className="wcf-metric-key">RISK&nbsp;CLASS</span>
-                <span className={`wcf-metric-val wcf-metric-threat${
-                  detection.threatClass === 'OMEGA' || detection.threatClass === 'CRITICAL'
-                    ? ' wcf-metric-threat--alert' : ''}`}>
-                  {detection.threatClass}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
 
+        {/* ── Glitch log ── */}
+        {camActive && currentLog && (
+          <div className={`wcf-glitch-log${isAlert ? ' wcf-glitch-log--alert' : ''}`}>
+            <span className="wcf-glitch-log-cursor">▶</span>
+            <span className="wcf-glitch-log-text">{currentLog.display}</span>
+          </div>
+        )}
+
         {/* ── Camera input selector (shown when 2+ devices detected) ── */}
-        {showSelector && (
+        {showSelect && (
           <div className="wcf-cam-select">
             <span className="wcf-cam-select-label">INPUT&nbsp;SOURCE</span>
             <div className="wcf-cam-options">
