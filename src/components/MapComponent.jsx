@@ -352,7 +352,7 @@ export default function MapComponent() {
       {/* ── Title Bar ── */}
       <div className="title-bar">
         <span className="title-bar-blink">▮</span>
-        BERLIN ABSURDITY ENGINE&nbsp;// SYSTEM_v0.1
+        BERLIN SENSOR MONITOR&nbsp;// SYSTEM_v0.1
         <span className="title-bar-blink">▮</span>
       </div>
 

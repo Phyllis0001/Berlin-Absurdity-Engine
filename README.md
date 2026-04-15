@@ -1,8 +1,8 @@
-# Berlin Absurdity Engine
+# Berlin Sensor Monitor
 
 A tactical city-monitoring web app set in Berlin. Built for an urban design studio at Bauhaus-Universität Weimar. The city is under constant surveillance — incidents spawn across the map, each one triggering an AI response unit that diagnoses the problem and proposes a solution that makes everything dramatically worse.
 
-**Live site → [phyllis0001.github.io/Berlin-Absurdity-Engine](https://phyllis0001.github.io/Berlin-Absurdity-Engine/)**
+**Live site → [phyllis0001.github.io/Berlin-Sensor-monitor](https://phyllis0001.github.io/Berlin-Sensor-monitor/)**
 
 ---
 
@@ -75,8 +75,8 @@ You need [Node.js](https://nodejs.org) v18 or newer.
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Phyllis0001/Berlin-Absurdity-Engine.git
-cd Berlin-Absurdity-Engine
+git clone https://github.com/Phyllis0001/Berlin-Sensor-monitor.git
+cd Berlin-Sensor-monitor
 
 # 2. Install dependencies
 npm install
@@ -100,7 +100,7 @@ Deployment is fully automatic. Every push to `main` triggers the GitHub Actions 
 
 **One-time setup (already done for this repo):**
 1. Go to **Settings → Pages → Source** and select **GitHub Actions**
-2. The `VITE_BASE` in the workflow is already set to `/Berlin-Absurdity-Engine/`
+2. The `VITE_BASE` in the workflow is already set to `/Berlin-Sensor-monitor/`
 
 After that: push → wait ~60 seconds → site updates.
 
